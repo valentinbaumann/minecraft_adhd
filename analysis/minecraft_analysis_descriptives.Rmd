@@ -1,0 +1,171 @@
+---
+title: "minecraft_analysis_descriptives"
+author: "Valentin"
+date: "`r Sys.Date()`"
+output: html_document
+encoding: UTF-8
+---
+
+```{r, SETTINGS-knitr, include=FALSE}
+stopifnot(require(knitr))
+options(width = 90)
+opts_chunk$set(
+  cache = FALSE,
+  comment = NA,
+  message = FALSE,
+  results = "asis",
+  warning = FALSE
+)
+```
+
+
+
+
+
+
+
+# import libraries
+```{r, echo=FALSE}
+
+# load libraries
+library(foreign) 
+library(Hmisc)
+library(tidyverse)
+library(summarytools)
+
+
+```
+<br>
+
+
+# read input
+```{r, echo=FALSE}
+
+minecraft_data = read.spss('minecraft_data.sav', use.value.labels = TRUE, to.data.frame = TRUE)
+
+
+```
+
+
+
+
+#### compute additional variables
+```{r, echo=FALSE}
+
+# compute recall difference as an additional variable
+minecraft_data$memory_difference = minecraft_data$LTM -  minecraft_data$STM
+
+# compute memory quotient as an additional variable
+minecraft_data$memory_quotient =  minecraft_data$LTM / minecraft_data$STM
+minecraft_data$retention_score = minecraft_data$memory_quotient * 100
+
+```
+
+
+
+#### z transform control variables for the extended analysis models
+```{r, echo=FALSE}
+
+minecraft_data$binNumDayTwo_Ztrans = scale(minecraft_data$binNumDayTwo)
+minecraft_data$IPQ_Ztrans = scale(minecraft_data$IPQ)
+minecraft_data$JTCI_Expl_Ztrans = scale(minecraft_data$JTCI_Expl)
+
+```
+
+
+#### relevel "diagnosis"
+```{r, echo=FALSE}
+
+minecraft_data$diagnosis = factor(minecraft_data$diagnosis, levels = c( "ADHD","control"))
+
+```
+
+
+
+#### exclude participants
+
+- subject 11 was non-compliant during experiment
+- subject 39 did not show up after inital diagnostic session
+- subjects 40 and 57: technical issues
+
+
+```{r, echo=FALSE}
+
+# exclude participants
+minecraft_data = subset(minecraft_data, subject != 11 & subject != 39 & subject != 40 & subject != 57)
+
+```
+
+
+
+# select variables of interest
+```{r, echo=FALSE}
+
+#minecraft_data = select(minecraft_data, subject, Hits, FalseAlarms, CorrectedHitrate, splitter_groups)
+
+```
+
+
+#### compute subsets
+```{r, echo=FALSE}
+
+# subset the single groups
+data_control_familiar = minecraft_data[which(minecraft_data$splitter_groups == "control_familiar"), ] 
+data_control_novel = minecraft_data[which(minecraft_data$splitter_groups == "control_novel"), ] 
+data_adhd_familiar = minecraft_data[which(minecraft_data$splitter_groups == "ADHD_familiar"), ] 
+data_adhd_novel = minecraft_data[which(minecraft_data$splitter_groups == "ADHD_novel"), ] 
+
+
+```
+<br>
+
+
+
+
+# sample description
+
+#### script needs to be knit to be displayed properly ####
+
+
+# total sample
+```{r, echo = FALSE}
+
+
+#dfSummary(minecraft_data, plain.ascii = FALSE, style = "grid", round.digits = 3, graph.magnif = 0.75, valid.col = FALSE, tmp.img.dir = "/tmp")
+
+
+```
+
+
+# adhd familiar
+```{r, echo = FALSE}
+
+dfSummary(data_adhd_familiar, plain.ascii = FALSE, style = "grid", round.digits = 3, graph.magnif = 0.75, valid.col = FALSE, tmp.img.dir = "/tmp")
+
+```
+
+
+# adhd novel
+```{r, echo = FALSE}
+
+dfSummary(data_adhd_novel, plain.ascii = FALSE, style = "grid", round.digits = 3, graph.magnif = 0.75, valid.col = FALSE, tmp.img.dir = "/tmp")
+
+```
+
+
+# control familiar
+```{r, echo = FALSE}
+
+dfSummary(data_control_familiar, plain.ascii = FALSE, style = "grid", round.digits = 3, graph.magnif = 0.75, valid.col = FALSE, tmp.img.dir = "/tmp")
+
+```
+
+
+# control novel
+```{r, echo = FALSE}
+
+dfSummary(data_control_novel, plain.ascii = FALSE, style = "grid", round.digits = 3, graph.magnif = 0.75, valid.col = FALSE, tmp.img.dir = "/tmp")
+
+```
+
+

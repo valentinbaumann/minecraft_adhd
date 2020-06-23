@@ -1,0 +1,578 @@
+---
+title: "minecraft_analysis_supplemental"
+author: "Valentin"
+date: "`r Sys.Date()`"
+output: html_document
+encoding: UTF-8
+---
+
+```{r, SETTINGS-knitr, include=FALSE}
+stopifnot(require(knitr))
+options(width = 90)
+opts_chunk$set(
+  cache = FALSE,
+  comment = NA,
+  message = FALSE,
+  warning = FALSE
+)
+```
+
+
+
+
+
+
+
+# import libraries
+```{r, echo=FALSE, include=FALSE}
+
+# load libraries
+
+                    
+library(foreign)  
+library(plyr)
+
+library(lme4)
+library(car)
+library(TOSTER)
+
+library(ggplot2)          
+library(tidyverse)
+library(sjPlot)
+library(ggpubr)
+library(Hmisc)
+
+library(jtools)
+library(nlme)
+library(rcompanion)
+
+library(brms)
+library(ggbeeswarm)
+library(psych)
+library(psycho)
+
+library(haven)
+
+library(sjstats)
+library(bayestestR)
+library(see)
+
+library(afex)
+
+```
+<br>
+
+
+# create the dataset
+
+#### read input
+```{r, echo=FALSE}
+
+
+minecraft_data = read.spss('minecraft_data.sav', use.value.labels = TRUE, to.data.frame = TRUE)
+
+
+```
+
+
+
+#### compute additional variables
+```{r, echo=FALSE}
+
+# compute recall difference as an additional variable
+minecraft_data$memory_difference = minecraft_data$LTM -  minecraft_data$STM
+
+# compute memory quotient as an additional variable
+minecraft_data$memory_quotient =  minecraft_data$LTM / minecraft_data$STM
+minecraft_data$retention_score = minecraft_data$memory_quotient * 100
+
+```
+
+
+
+#### z transform control variables for the extended analysis models
+```{r, echo=FALSE}
+
+minecraft_data$binNumDayTwo_Ztrans = scale(minecraft_data$binNumDayTwo)
+minecraft_data$IPQ_Ztrans = scale(minecraft_data$IPQ)
+
+```
+
+
+#### relevel "diagnosis"
+```{r, echo=FALSE}
+
+minecraft_data$diagnosis = factor(minecraft_data$diagnosis, levels = c( "ADHD","control"))
+
+```
+
+
+
+#### exclude participants
+
+- subject 11 was non-compliant during experiment
+- subject 39 did not show up after inital diagnostic session
+- subjects 40 and 57: technical issues
+
+
+```{r, echo=FALSE}
+
+# exclude participants
+minecraft_data = subset(minecraft_data, subject != 11 & subject != 39 & subject != 40 & subject != 57)
+
+```
+
+
+
+
+#### get data into long format (by time)
+```{r, echo=FALSE}
+
+# all data
+minecraft_data_long = gather(minecraft_data, key = "time", value = "words_remembered", STM,LTM)
+minecraft_data_long$time = as.factor(minecraft_data_long$time)
+
+
+```
+<br>
+
+
+
+
+
+#### generate a dataset with exploration variables in long format
+```{r, echo = FALSE}
+
+# transform to long data format (by day)
+    
+# for time
+minecraft_position_long_time = gather(minecraft_data, key = "day", value = "time_spent", totalTimeDayOne, totalTimeDayTwo)
+
+# for distance
+minecraft_position_long_distance = gather(minecraft_data, key = "day", value = "distance_travelled", distanceDayOne, distanceDayTwo)
+
+# for VE
+minecraft_position_long_VE = gather(minecraft_data, key = "day", value = "VE_type", VE_day1, VE_day2)
+
+# for normalized entropy (entries)
+minecraft_position_long_binEntropyEntries_norm = gather(minecraft_data, key = "day", value = "binEntropyEntriesNormalized", binEntropyEntriesDayOneNormalized, binEntropyEntriesDayTwoNormalized)
+
+# for binNum
+minecraft_position_long_binNum = gather(minecraft_data, key = "day", value = "binNum", binNumDayOne, binNumDayTwo)
+
+# for normalized binNum
+minecraft_position_long_binNum_norm = gather(minecraft_data, key = "day", value = "binNumNormalized", binNumDayOneNormalized, binNumDayTwoNormalized)
+
+
+# merge all long datasets into one
+minecraft_position_long = minecraft_position_long_time 
+minecraft_position_long$distance_travelled = minecraft_position_long_distance$distance_travelled
+minecraft_position_long$VE_type = minecraft_position_long_VE$VE_type
+minecraft_position_long$binEntropyEntriesNormalized = minecraft_position_long_binEntropyEntries_norm$binEntropyEntriesNormalized
+minecraft_position_long$binNum = minecraft_position_long_binNum$binNum 
+minecraft_position_long$binNumNormalized = minecraft_position_long_binNum_norm$binNumNormalized 
+
+# factorize and rename levels of "day"
+minecraft_position_long$day = as.factor(minecraft_position_long$day)
+levels(minecraft_position_long$day) = c("one", "two")
+
+# remove redundant dataframes
+remove(minecraft_position_long_VE, minecraft_position_long_distance, minecraft_position_long_time, minecraft_position_long_binEntropyEntries_norm, minecraft_position_long_binNum, minecraft_position_long_binNum_norm)
+
+
+
+```
+
+
+
+#### add functions
+```{r, echo=FALSE}
+
+ROPE_bySD = function(posterior_distribution){
+
+  range_myROPE =  c( -0.1*sd(posterior_distribution), 0.1*sd(posterior_distribution) )
+  return(range_myROPE)
+}
+
+
+```
+
+
+
+
+#### set brms theme
+```{r, echo=FALSE}
+
+theme_set(theme_default())
+
+```
+<br>
+
+
+
+
+
+
+
+#####################################################################################################################
+# Compare environment types
+
+#### Comparability of environments (immersion/IPQ)
+```{r, echo=FALSE}
+
+
+# exploration time
+t.test(totalTimeDayOne~VE_day1, data = minecraft_data) 
+
+
+# binNum
+t.test(binNumDayOne~VE_day1, data = minecraft_data) 
+
+
+# immersion
+t.test(IPQ~VE_day2, data = minecraft_data) 
+
+```
+
+
+
+#### does the type of VE infleunce retention?
+
+```{r, echo=FALSE}
+
+t.test(retention_score~VE_day2, data = minecraft_data) 
+
+```
+
+
+
+
+
+
+
+#####################################################################################################################
+# Analysis of recognition data
+<br>
+
+
+## ANOVA for corrected hitrate (sanity check to see that frequentist measures give the same results)
+
+```{r, echo=FALSE}
+
+# change contrasts so r gives the same results as SPSS (SPSS uses sum instead of treatment contrast)
+options(contrasts = c("contr.sum", "contr.poly"))
+#options(contrasts = c("contr.treatment", "contr.poly"))
+
+Anova(lm(CorrectedHitrate ~ diagnosis*novelty, data = minecraft_data), type = 3)
+
+ggplot(minecraft_data, aes(x = diagnosis, y = CorrectedHitrate, group = novelty, colour = novelty)) + 
+      stat_summary(fun.data = "mean_cl_boot", position=position_dodge(width = 0.1), colour = "black") + 
+      stat_summary(fun.y = mean, geom = "line", position=position_dodge(width = 0.1)) +
+      geom_beeswarm(dodge.width=0.2) +
+      scale_color_discrete(name = "novelty", labels = c("familiar", "novel")) +
+      scale_x_discrete(labels = c("ADHD", "TD")) # change x axis tick labels
+
+      
+
+```
+
+
+
+
+```{r, echo=FALSE}
+
+
+# recognition (barplots)
+p_recognition = ggplot(minecraft_data, aes(x = splitter_groups, y = CorrectedHitrate)) + 
+    theme_bw() +
+    stat_summary(fun = "mean", geom = "bar", alpha = 0.3, width = 0.5, fill = "royalblue") +
+    geom_beeswarm(colour = rgb(0,45,92, maxColorValue = 255), cex = 1.4, size = 1.3) +
+    stat_summary(fun.data = "mean_cl_boot", geom="errorbar", width = .4, colour = rgb(0,45,92, maxColorValue = 255)) + 
+    scale_y_continuous(expand = c(0,0), limits = c(0,1.1)) + # force x axis to start at y axis 0
+    ylab("accuracy") + # change y axis label
+    xlab("") + # hide x axis label
+    scale_x_discrete(labels = c("ADHD-familiar", "ADHD-novel", "TD-familiar", "TD-novel")) + # change x axis tick labels
+    theme(panel.border = element_blank(), axis.line = element_line(colour = "black"))
+
+p_recognition
+
+#ggsave(file="recognition.svg", plot=p_recognition, width = 190, units = "mm")
+
+
+
+```
+
+
+
+
+```{r, echo=FALSE}
+
+#### load the model reported in the paper
+minecraft_recognition_full = readRDS(file = "minecraft_recognition_full.rds")
+
+
+#### uncomment the following to fit a new model
+
+# # 
+# # # set priors
+# # prior_intercept = set_prior("student_t(3,0.7,0.2)", class = "Intercept")
+# # prior_sigma = set_prior("student_t(3,0,0.3)", class = "sigma")
+# # 
+# # control_novel is reference category
+# minecraft_recognition_full <- brm(
+#     CorrectedHitrate ~ diagnosis*novelty,
+#     data = minecraft_data,
+#     #prior = c(prior_intercept, prior_sigma),
+#     sample_prior = TRUE,
+#     chains = 4, cores = 4,
+#     save_all_pars= TRUE
+# )
+# 
+# #remove(prior_intercept, prior_sigma)
+# 
+# 
+# saveRDS(minecraft_recognition_full, file = "minecraft_recognition_full.rds")
+
+```
+
+
+
+```{r, echo=FALSE}
+
+summary(minecraft_recognition_full)
+plot(minecraft_recognition_full, ask = FALSE)
+plot(conditional_effects(minecraft_recognition_full), ask = FALSE)
+pp_check(minecraft_recognition_full)
+
+```
+
+
+
+
+
+#### get the posterior distribution of the differences between groups
+
+
+```{r, echo=FALSE}
+
+# extract the posterior distribution for the reference group (adhd_familiar)
+posterior_adhd_familiar = posterior_samples(minecraft_recognition_full, pars = "b_Intercept")$b_Intercept
+
+# extract postrerior distributions of model effects
+posterior_effect_novelty = posterior_samples(minecraft_recognition_full, pars = "b_noveltynovel")$b_noveltynovel
+posterior_effect_diagnosis = posterior_samples(minecraft_recognition_full, pars = "b_diagnosiscontrol")$b_diagnosiscontrol
+posterior_effect_interaction = posterior_samples(minecraft_recognition_full, pars = "b_diagnosiscontrol:noveltynovel")$`b_diagnosiscontrol:noveltynovel`
+
+
+
+# compute posterior distributions for the other groups by combining intercept and model effects
+posterior_adhd_novel = posterior_adhd_familiar + posterior_effect_novelty
+posterior_control_familiar = posterior_adhd_familiar + posterior_effect_diagnosis
+posterior_control_novel = posterior_adhd_familiar + posterior_effect_novelty + posterior_effect_diagnosis + posterior_effect_interaction
+
+# compute all group differences
+posterior_diff_adhd_novel_adhd_familiar = posterior_adhd_novel - posterior_adhd_familiar
+posterior_diff_adhd_familiar_control_familiar = posterior_adhd_familiar - posterior_control_familiar
+posterior_diff_adhd_familiar_control_novel = posterior_adhd_familiar - posterior_control_novel
+posterior_diff_adhd_novel_control_novel = posterior_adhd_novel - posterior_control_novel
+posterior_diff_adhd_novel_control_familiar = posterior_adhd_novel - posterior_control_familiar
+posterior_diff_control_novel_control_familiar =  posterior_control_novel - posterior_control_familiar
+
+# compute main effects of diagnosis and novelty
+posterior_main_effect_diagnosis = posterior_adhd_familiar + posterior_adhd_novel - posterior_control_familiar - posterior_control_novel
+posterior_main_effect_novelty = posterior_adhd_familiar + posterior_control_familiar - posterior_adhd_novel - posterior_control_novel
+
+
+```
+
+
+
+
+
+
+
+```{r, echo=FALSE}
+
+#### set ROPE
+
+# manually define the ROPE to use for the posterior differences, since otherwise the range defaults to [-0.1, 0.1]
+# alternatively, the ROPE may also be estimated through the standard deviation of each individual distribution [-0.1 * SD, 0.1 * SD]
+# as only a difference of > 5% is meaningful, this is used as the ROPE for this analysis
+rope_minecraft_recognition_full = c(-0.05,0.05) # equals a minimal difference of 5% in corrected hitrate
+
+
+CI_rope = 1 # ROPE_percentage refers to all of the posterior distribution (100%)
+#CI_rope = .95 # ROPE_percentage refers to the HDI (95%)
+
+
+
+#### plot posterior distributions of the group differences and report HDI and percentage in ROPE
+
+# control familiar vs. control novel
+ROPE = rope(posterior_diff_control_novel_control_familiar, ci = .95, range(rope_minecraft_recognition_full))
+p_diff_control_novel_control_familiar = plot(ROPE) +
+  geom_vline(xintercept=mean(posterior_diff_control_novel_control_familiar)) +
+  ggtitle("TD_novel minus TD_familiar") +
+#  scale_x_continuous(expand = c(0,0), limits = c(-30,20), breaks = c(-20, -10, 0, 10)) + # force y axis to start at x axis 0
+   #xlim(c(-30, 20)) +
+   scale_y_continuous(expand = c(0,0), limits = c(0,1.1)) + # force x axis to start at y axis 0
+  xlab(label = "difference in recognition") +
+  ylab(label = "posterior probability") +
+  theme( axis.text.y = element_blank(), 
+         axis.ticks.y = element_blank(), 
+         axis.text.x = element_text(size = 10, family = "sans"), 
+         axis.title.x = element_text(size=10, family = "sans"), 
+         axis.title.y = element_text(size=10, family = "sans"), 
+         title = element_text(size=10, family = "sans")) +
+  guides(fill = FALSE)
+  
+p_diff_control_novel_control_familiar
+
+describe_posterior(posterior_diff_control_novel_control_familiar, centrality = "mean", ci = .95, rope_ci = CI_rope, rope_range = rope_minecraft_recognition_full)
+#ggsave("posterior_diff_control_novel_control_familiar.svg", p_diff_control_novel_control_familiar, height = 85, width = 105, units = "mm")
+
+
+# adhd familiar vs. adhd novel
+ROPE = rope(posterior_diff_adhd_novel_adhd_familiar, ci = .95, range(rope_minecraft_recognition_full))
+p_posterior_diff_adhd_novel_adhd_familiar = plot(ROPE) +
+  geom_vline(xintercept=mean(posterior_diff_adhd_novel_adhd_familiar)) +
+  ggtitle("ADHD_novel minus ADHD_familiar") +
+   scale_y_continuous(expand = c(0,0), limits = c(0,1.1)) + # force x axis to start at y axis 0
+  xlab(label = "difference in recognition") +
+  ylab(label = "posterior probability") +
+  theme( axis.text.y = element_blank(), 
+         axis.ticks.y = element_blank(), 
+         axis.text.x = element_text(size = 10, family = "sans"), 
+         axis.title.x = element_text(size=10, family = "sans"), 
+         axis.title.y = element_text(size=10, family = "sans"), 
+         title = element_text(size=10, family = "sans")) +
+  guides(fill = FALSE)
+
+p_posterior_diff_adhd_novel_adhd_familiar
+
+describe_posterior(posterior_diff_adhd_novel_adhd_familiar, centrality = "mean", ci = .95, rope_ci = CI_rope, rope_range = rope_minecraft_recognition_full)
+#ggsave("posterior_diff_adhd_novel_adhd_familiar.svg", p_posterior_diff_adhd_novel_adhd_familiar, height = 85, width = 105, units = "mm")
+
+
+# adhd novel vs. control novel
+ROPE = rope(posterior_diff_adhd_novel_control_novel, ci = .95, range(rope_minecraft_recognition_full))
+p_posterior_diff_adhd_novel_control_novel = plot(ROPE) +
+  geom_vline(xintercept=mean(posterior_diff_adhd_novel_control_novel)) +
+  ggtitle("ADHD_novel minus TD_novel") +
+  scale_y_continuous(expand = c(0,0), limits = c(0,1.1)) + # force x axis to start at y axis 0
+  xlab(label = "difference in recognition") +
+  ylab(label = "posterior probability") +
+  theme( axis.text.y = element_blank(), 
+         axis.ticks.y = element_blank(), 
+         axis.text.x = element_text(size = 10, family = "sans"), 
+         axis.title.x = element_text(size=10, family = "sans"), 
+         axis.title.y = element_text(size=10, family = "sans"), 
+         title = element_text(size=10, family = "sans")) +
+  guides(fill = FALSE)
+
+p_posterior_diff_adhd_novel_control_novel
+
+describe_posterior(posterior_diff_adhd_novel_control_novel, centrality = "mean", ci = .95, rope_ci = CI_rope, rope_range = rope_minecraft_recognition_full)
+#ggsave("posterior_diff_adhd_novel_control_novel.svg", p_posterior_diff_adhd_novel_control_novel, height = 85, width = 105, units = "mm")
+
+
+
+# adhd familiar vs. control familiar
+ROPE = rope(posterior_diff_adhd_familiar_control_familiar, ci = .95, range(rope_minecraft_recognition_full))
+p_posterior_diff_adhd_familiar_control_familiar = plot(ROPE) +
+  geom_vline(xintercept=mean(posterior_diff_adhd_familiar_control_familiar)) +
+  ggtitle("ADHD_familiar minus TD_familiar") +
+  scale_y_continuous(expand = c(0,0), limits = c(0,1.1)) + # force x axis to start at y axis 0
+  xlab(label = "difference in recognition") +
+  ylab(label = "posterior probability") +
+  theme( axis.text.y = element_blank(), 
+         axis.ticks.y = element_blank(), 
+         axis.text.x = element_text(size = 10, family = "sans"), 
+         axis.title.x = element_text(size=10, family = "sans"), 
+         axis.title.y = element_text(size=10, family = "sans"), 
+         title = element_text(size=10, family = "sans")) +
+  guides(fill = FALSE)
+
+p_posterior_diff_adhd_familiar_control_familiar
+
+describe_posterior(posterior_diff_adhd_familiar_control_familiar, centrality = "mean", ci = .95, rope_ci = CI_rope, rope_range = rope_minecraft_recognition_full)
+#ggsave("posterior_diff_adhd_familiar_control_familiar.svg", p_posterior_diff_adhd_familiar_control_familiar, height = 85, width = 105, units = "mm")
+
+
+
+```
+
+
+
+
+#### main effects of diagnosis and novelty
+
+```{r, echo=FALSE}
+
+
+# manually define the ROPE to use for the posterior differences, since otherwise the range defaults to [-0.1, 0.1]
+# alternatively, the ROPE may also be estimated through the standard deviation of each individual distribution [-0.1 * SD, 0.1 * SD]
+# as only a difference of > 0.05% is meaningful, this is used as the ROPE for this analysis
+rope_minecraft_recognition_full = c(-0.05, 0.05) # equals a minimal difference of 5% in corrected hitrate
+
+CI_rope = 1 # ROPE_percentage refers to all of the posterior distribution (100%)
+#CI_rope = .95 # ROPE_percentage refers to the HDI (95%)
+
+
+
+
+# main effect diagnosis
+ROPE = rope(posterior_main_effect_diagnosis, ci = .95, range(rope_minecraft_recognition_full))
+p_posterior_main_effect_diagnosis = plot(ROPE) +
+  geom_vline(xintercept=mean(posterior_main_effect_diagnosis)) +
+  ggtitle("main effect diagnosis") +
+  scale_y_continuous(expand = c(0,0), limits = c(0,1.1)) + # force x axis to start at y axis 0
+  xlab(label = "difference in recognition") +
+  ylab(label = "posterior probability") +
+  theme( axis.text.y = element_blank(), 
+         axis.ticks.y = element_blank(), 
+         axis.text.x = element_text(size = 10, family = "sans"), 
+         axis.title.x = element_text(size=10, family = "sans"), 
+         axis.title.y = element_text(size=10, family = "sans"), 
+         title = element_text(size=10, family = "sans")) +
+  guides(fill = FALSE)
+
+p_posterior_main_effect_diagnosis
+
+describe_posterior(posterior_main_effect_diagnosis, centrality = "mean", ci = .95, rope_ci = CI_rope, rope_range = rope_minecraft_recognition_full)
+#ggsave("posterior_main_effect_diagnosis.svg", p_posterior_main_effect_diagnosis, height = 85, width = 105, units = "mm")
+
+
+
+
+
+
+# main effect of novelty
+ROPE = rope(posterior_main_effect_novelty, ci = .95, range(rope_minecraft_recognition_full))
+p_posterior_main_effect_novelty = plot(ROPE) +
+  geom_vline(xintercept=mean(posterior_main_effect_novelty)) +
+  ggtitle("main effect novelty") +
+  scale_y_continuous(expand = c(0,0), limits = c(0,1.1)) + # force x axis to start at y axis 0
+  xlab(label = "difference in recognition") +
+  ylab(label = "posterior probability") +
+  theme( axis.text.y = element_blank(), 
+         axis.ticks.y = element_blank(), 
+         axis.text.x = element_text(size = 10, family = "sans"), 
+         axis.title.x = element_text(size=10, family = "sans"), 
+         axis.title.y = element_text(size=10, family = "sans"), 
+         title = element_text(size=10, family = "sans")) +
+  guides(fill = FALSE)
+
+p_posterior_main_effect_novelty
+
+describe_posterior(posterior_main_effect_novelty, centrality = "mean", ci = .95, rope_ci = CI_rope, rope_range = rope_minecraft_recognition_full)
+#ggsave("posterior_main_effect_novelty.svg", p_posterior_main_effect_novelty, height = 85, width = 105, units = "mm")
+
+
+
+
+
+```
+
+
+
