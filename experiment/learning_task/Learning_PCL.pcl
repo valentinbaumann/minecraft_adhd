@@ -1,0 +1,90 @@
+
+#####################################################################################
+# PCL File for Recognition  Task 
+#
+# associated files: Learning_SCE, subroutines_PCL, wordlist_learning.txt)
+#
+#####################################################################################
+
+
+# presets
+preset int vp_number;
+
+# define variables
+int num_words = 20;							# number of words that will be presented, needs to be defined manually!
+int list_repetition = 2;					# number of times the full word list will be presented
+
+string name_inputfile = "wordlist_learning.txt";		# declare input file (later given to the "read_input"-subroutine)
+
+# include necessary subroutines 
+include "subroutines_PCL.pcl";
+
+
+
+# Start experiment #####################################
+
+# open output file and print headers 
+output_file results = new output_file;
+results.open("learning_logfile_vp" + string(vp_number) + ".txt", false);
+results.print(	"VP" + "\t" +					# vp number
+					"Trial" + "\t" +				# trial number
+					"Wort" + "\n");				# word presented
+
+
+
+# read input
+array<string> input_array [num_words] = read_input (num_words, name_inputfile);	# calls "read_input" subroutine to create input_array from input file. Using the "wordlist_recognition.txt" input file, the first column in the input_array contains the words, the second column the old/new information.
+
+
+# randomize word sequence 
+input_array.shuffle();						
+
+
+# present instruction
+instruction_trial.present();					
+ready_trial.present();
+
+
+# start trial loop 	
+loop int i = 1 until i > num_words				
+begin
+
+		string current_word = input_array[i];	# sets the element in the ith line of the input array as the curren word
+		
+		fixation_trial.present();					# present fixation
+		
+		trial_text.set_caption(current_word);	# load current word to text caption
+		trial_text.redraw();
+		
+		test_trial.present();						# present current word
+		
+		
+
+		# write logfile 
+		results.print(string (vp_number) + "\t");			# vp number
+		results.print(string(i) + "\t");						# trial number
+		results.print(current_word + "\n");					# word presented 
+		
+		
+		i=i+1;									# add up loop counter
+		
+		if i > num_words then				# if the end of the list is reached, loop is started again until the desired number of list repetitions is reached
+			
+			if list_repetition > 1 then
+				i = 1;
+				fixation_trial.present();
+				ready_trial2.present();
+			end;
+			
+			list_repetition = list_repetition - 1;		
+		end;
+		
+end;												# end trial loop
+
+
+results.close();								# close output file
+
+default_trial.present();					# present end trial
+end_trial.present();
+
+

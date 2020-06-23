@@ -1,0 +1,201 @@
+
+#####################################################################################
+# PCL File for Recognition  Task 
+#
+# associated files: Recognition_SCE, subroutines_PCL, wordlist_recognition.txt
+#
+#####################################################################################
+
+
+# presets
+preset int vp_number;
+
+# define variables
+int num_words = 40;							# number of words that will be presented, needs to be defined manually!
+int num_input_parameters = 2;				# equals the number of columns in the input file, needs to be defined manually!
+
+string expected_response = "99";					# response expected
+int recognition = 99;								# recognition parameter computed depending of the expected response and the response given
+
+
+string name_inputfile = "wordlist_recognition.txt";		# declare input file (later given to the "read_input"-subroutine)
+
+# include necessary subroutines 
+include "subroutines_PCL.pcl";
+
+# randomly set response buttons and change instruction accordingly
+int response_config = random(1,2);
+
+if response_config == 1 then
+	instruction_text.set_caption( "War das Wort gestern dabei?" + "\n" + "\n" + "wenn ja, drücke die rechte Pfeiltaste" + "\n" + "wenn nicht, drücke die linke Pfeiltaste" + "\n" + "\n" + "\n" + "weiter mit Leertaste...");
+	left_instr_text.set_caption( "nicht dabei");
+	right_instr_text.set_caption( "dabei");
+else
+	instruction_text.set_caption( "War das Wort gestern dabei?" + "\n" + "\n" + "wenn ja, drücke die linke Pfeiltaste" + "\n" + "wenn nicht, drücke die rechte Pfeiltaste" + "\n" + "\n" + "\n" + "weiter mit Leertaste...");		
+	left_instr_text.set_caption( "dabei");
+	right_instr_text.set_caption( "nicht dabei");
+end;
+instruction_text.redraw();
+left_instr_text.redraw();
+right_instr_text.redraw();
+
+
+
+
+# Start experiment #####################################
+
+# open output file and print headers 
+output_file results = new output_file;
+results.open("recognition_logfile_vp" + string(vp_number) + ".txt", false);
+results.print(	"VP" + "\t" +					# vp number
+					"Resp_Config" + "\t" +		# response button configuration
+					"Trial" + "\t" +				# trial number
+					"Wort" + "\t" +				# word presented
+					"Exp_Resp" + "\t" +			# correct response
+					"First_Resp" + "\t" +		# first response (absolute button, independent from response configuration!)					
+					"Last_Resp" + "\t" +			# second response (absolute button, independent from response configuration!)
+					"Recognition" + "\t" + 		# states if word was correctly recognized (changes with responseconfiguration)
+					"RT_first_resp" + "\t" +	# reaction time first response				
+					"resp_count" + "\n" );		# total number of responses in the trial
+
+
+# read input
+array<string> input_array [num_words][num_input_parameters] = read_input (num_words, name_inputfile);	# calls "read_input" subroutine to create input_array from input file. Using the "wordlist_recognition.txt" input file, the first column in the input_array contains the words, the second column the old/new information.
+
+
+# randomize word sequence (needed for yoked randomization)
+array<int> sequence_array [num_words];		# creates a dummy array in the size of the word list
+sequence_array.fill(1, num_words, 1 ,1);
+sequence_array.shuffle();						# randomize the order of all elements in the sequence_array
+
+
+# present instruction
+instruction_trial.present();					
+ready_trial.present();
+
+# start trial loop 	
+loop int i = 1 until i>num_words				
+begin
+
+		string current_word = input_array[sequence_array[i]][1];		# gets a random word out of the input array (the ith line of the previously shuffled sequence_array effectively gives a random line in the input_array)
+		
+		fixation_trial.present();					# present fixation
+		
+		trial_text.set_caption(current_word);	# load current word to text caption
+		trial_text.redraw();
+		
+		test_trial.present();						# present current word
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		int RT_first_resp = 99;
+		int last_response = 99;
+		
+		# get time of the last stimulus
+		stimulus_data last_stimulus = stimulus_manager.last_stimulus_data();
+		int stim_time = last_stimulus.time();
+		
+		
+		int resp_count = response_manager.response_count();					# number of responses in current trial
+		int all_resp_count = response_manager.response_data_count(); 		# cumulated number of responses in all trials
+		
+		
+		if (resp_count==0) then
+			RT_first_resp = 99;
+			first_response = 99;
+			last_response = 99;
+		else
+			response_data first_resp = response_manager.get_response_data ((all_resp_count + 1) - (resp_count));			# the "get_response_data"-method gets the ith response in the scenario. Here tweaked to get specifically the first response of a trial 
+			first_response = first_resp.code();												# get first response
+			last_response = response_manager.last_response();							# get last response (response code: 1 = left/new word, 2 = right/old word)
+			
+			int first_resp_time = first_resp.time();										# get RT for first response
+			RT_first_resp = first_resp_time - stim_time;
+			
+		end;
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		# evaluate response
+		expected_response = input_array[sequence_array[i]][2];	# gets information out of the input array if the current word is known or new (for sequencing, see above)
+
+		if response_config == 1	then				# response configuration = 1: right button = old, left button = new 	
+			
+			if last_response == 1 then				
+				if expected_response == "1" then # expected response code: 1 = new, 2 = old	  
+					recognition = 1;					# 1 = word identified as new while word new
+				else 											
+					recognition = 2;					# 2 = word identified as new while word old
+				end;
+			elseif last_response == 2 then
+				if expected_response == "2" then 	
+					recognition = 3;					# 3 = word identified as old while word old
+				else 											
+					recognition = 4;					# 4 = word identified as new while word old
+				end;
+			else 											
+				recognition = 99;						# 99 = missing response
+			end;
+			
+		else 												# response configuration = 2: right button = new, left button = old 
+			
+			if last_response == 2 then				
+				if expected_response == "1" then 	  
+					recognition = 1;					# 1 = word identified as new while word new
+				else 											
+					recognition = 2;					# 2 = word identified as new while word old
+				end;
+			elseif last_response == 1 then
+				if expected_response == "2" then 	
+					recognition = 3;					# 3 = word identified as old while word old
+				else 											
+					recognition = 4;					# 4 = word identified as new while word old
+				end;
+			else 											
+				recognition = 99;						# 99 = missing response
+			end;	
+			
+		end;
+		
+		
+		
+		
+		# write logfile 
+		results.print(string (vp_number) + "\t");			# vp number
+		results.print(string (response_config) + "\t");	# response button configuration		
+		results.print(string(i) + "\t");						# trial number
+		results.print(current_word + "\t");					# word presented 
+		results.print(expected_response + "\t");			# correct response
+		results.print(string(first_response) + "\t");	# frist response (absolute button, independent from response configuration!)
+		results.print(string(last_response) + "\t");		# last response (absolute button, independent from response configuration!)
+		results.print(string(recognition) + "\t");		# recognition parameter (changes with response configuration)
+		results.print(string(RT_first_resp) + "\t");		# reaction time for the first response
+		results.print(string(resp_count) + "\n");			# total number of responses in trial
+		
+		
+		i=i+1;									# add up loop counter
+end;												# end trial loop
+
+
+results.close();								# close output file
+
+default_trial.present();					# present end trial
+end_trial.present();
+
+

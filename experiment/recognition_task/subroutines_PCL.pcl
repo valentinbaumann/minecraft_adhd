@@ -1,0 +1,45 @@
+###########################
+# Subroutines
+###########################
+
+
+
+# subroutine "read_input"
+# this subroutine reads from an input file and returns the input (tweaked for Recognition_EXP)
+
+sub
+	array <string,2> read_input (int num_lines, string filename)							# sets "2-dimensional array of strings" as return-type for the returned variable. num_lines: number of lines in input file, in this case equal to the number of words presented
+begin
+	
+	# define variables
+	array<string> rawdata_array [0];												# 1d array to store raw data
+	array<string> finaldata_array [0][0];										# final array to return data in desired format (in this case 2d) 
+	string current_element;
+	
+	# open input file
+	input_file inputfile = new input_file;
+	inputfile.open(filename);														# the name of the input file needs to be specified here
+	
+	# loop that reads all elements in the input file and puts them into a 1d-array	
+	loop current_element = inputfile.get_line() until !inputfile.last_succeeded()		
+	begin
+		 rawdata_array.add(current_element);
+		 current_element = inputfile.get_line();
+	end;
+	
+	# loop that splits elements in the 1d rawdata array by delimiter (in this case \t) and saves the split data in the desired 2d finaldata array
+	loop int i = 1 until i > rawdata_array.count() 
+	begin
+		array<string> item[0];
+		rawdata_array[i].split( "\t", item );
+		finaldata_array.add(item);
+		i = i + 1;
+	end;
+	
+	inputfile.close();
+	
+	return finaldata_array;					# returns variable to the main PCL file
+	
+end;
+
+
